@@ -3,7 +3,7 @@
         {
             "id": "blue",
             "name": "Blueberry Donut",
-            "description": "",
+            "description": "Juicy & Refreshing",
             "picture": "/static/img/products/blue.jpg",
             "priceUsd": {
                 "currencyCode": "USD",
@@ -15,7 +15,7 @@
         {
             "id": "red",
             "name": "Raspberry Donut",
-            "description": "",
+            "description": "Rich & Smooth",
             "picture": "/static/img/red.jpg",
             "priceUsd": {
                 "currencyCode": "USD",
@@ -27,7 +27,7 @@
         {
             "id": "magenta",
             "name": "Cherry Donut",
-            "description": "",
+            "description": "Sweet & Bold",
             "picture": "/static/img/products/magenta.jpg",
             "priceUsd": {
                 "currencyCode": "USD",
@@ -39,7 +39,7 @@
         {
             "id": "green",
             "name": "Lime Donut",
-            "description": "",
+            "description": "Zesty & Uplifting",
             "picture": "/static/img/products/green.jpg",
             "priceUsd": {
                 "currencyCode": "USD",
@@ -51,7 +51,7 @@
         {
             "id": "yellow",
             "name": "Banana Donut",
-            "description": "",
+            "description": "Creamy & Energizing",
             "picture": "/static/img/products/yellow.jpg",
             "priceUsd": {
                 "currencyCode": "USD",
@@ -63,7 +63,7 @@
         {
             "id": "white",
             "name": "Dragon Fruit Donut",
-            "description": "",
+            "description": "Exotic & Captivating",
             "picture": "/static/img/products/white.jpg",
             "priceUsd": {
                 "currencyCode": "USD",

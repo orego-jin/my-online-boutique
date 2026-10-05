@@ -47,6 +47,8 @@ build:
     context: src/frontend
   - image: adservice
     context: src/adservice
+  - image: inventoryservice
+    context: src/inventoryservice
   tagPolicy:
     gitCommit: {}
   local:

@@ -260,3 +260,34 @@ message Ad {
     // short advertisement text to display.
     string text = 2;
 }
+
+
+// ----------------- Review Service -----------------
+
+message Review {
+    string product_id = 1;
+    string user_name = 2;
+    int32 rating = 3;         // 1~5
+    string text = 4;          
+}
+
+message SubmitReviewRequest {
+    Review review = 1;
+}
+
+message SubmitReviewResponse {
+    bool success = 1;
+}
+
+message GetReviewsRequest {
+    string product_id = 1;
+}
+
+message GetReviewsResponse {
+    repeated Review reviews = 1; 
+}
+
+service ReviewService {
+    rpc SubmitReview(SubmitReviewRequest) returns (SubmitReviewResponse) {}
+    rpc GetReviews(GetReviewsRequest) returns (GetReviewsResponse) {}
+}

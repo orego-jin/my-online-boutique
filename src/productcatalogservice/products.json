@@ -4,7 +4,7 @@
             "id": "blue",
             "name": "Blueberry Donut",
             "description": "Juicy & Refreshing",
-            "picture": "/static/img/products/blue.jpg",
+            "picture": "/static/img/products/blue.png",
             "priceUsd": {
                 "currencyCode": "USD",
                 "units": 3,
@@ -16,7 +16,7 @@
             "id": "red",
             "name": "Raspberry Donut",
             "description": "Rich & Smooth",
-            "picture": "/static/img/red.jpg",
+            "picture": "/static/img/red.png",
             "priceUsd": {
                 "currencyCode": "USD",
                 "units": 3,
@@ -28,7 +28,7 @@
             "id": "magenta",
             "name": "Cherry Donut",
             "description": "Sweet & Bold",
-            "picture": "/static/img/products/magenta.jpg",
+            "picture": "/static/img/products/magenta.png",
             "priceUsd": {
                 "currencyCode": "USD",
                 "units": 3,
@@ -40,7 +40,7 @@
             "id": "green",
             "name": "Lime Donut",
             "description": "Zesty & Uplifting",
-            "picture": "/static/img/products/green.jpg",
+            "picture": "/static/img/products/green.png",
             "priceUsd": {
                 "currencyCode": "USD",
                 "units": 3,
@@ -52,7 +52,7 @@
             "id": "yellow",
             "name": "Banana Donut",
             "description": "Creamy & Energizing",
-            "picture": "/static/img/products/yellow.jpg",
+            "picture": "/static/img/products/yellow.png",
             "priceUsd": {
                 "currencyCode": "USD",
                 "units": 3,
@@ -64,7 +64,7 @@
             "id": "white",
             "name": "Dragon Fruit Donut",
             "description": "Exotic & Captivating",
-            "picture": "/static/img/products/white.jpg",
+            "picture": "/static/img/products/white.png",
             "priceUsd": {
                 "currencyCode": "USD",
                 "units": 3,

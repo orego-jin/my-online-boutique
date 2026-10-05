@@ -1,4 +1,5 @@
-package dev.boutique.inventory;
+package inventory;
+
 
 import java.util.Map;
 import org.springframework.core.io.ClassPathResource;
@@ -27,7 +28,7 @@ public class InventoryController {
         String stock = redis.opsForValue().get("stock:" + productId);
 
         if (stock == null) {
-            return ResponseEntity.status(404).body(Map.of("message", "Out of stock."));
+            return ResponseEntity.status(404).body(Map.of("message", "Product not found."));
         }
 
         return ResponseEntity.ok(Map.of(
@@ -38,11 +39,11 @@ public class InventoryController {
     // POST /stock/OLJCESPC7Z/decrease : Decrease 1 from inventory
     @PostMapping("/{productId}/decrease")
     public ResponseEntity<?> decreaseStock(@PathVariable String productId) {
-       
+
         Long remaining = redis.execute(decreaseScript, List.of("stock:" + productId));
 
         if (remaining == null) {
-            return ResponseEntity.internalServerError().body(Map.of("message", "Error: Null product"));
+            return ResponseEntity.internalServerError().body(Map.of("message", "Inventory processing failed."));
         }
         if (remaining == -2) {
             return ResponseEntity.status(404).body(Map.of("message", "No product available"));

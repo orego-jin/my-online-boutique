@@ -20,7 +20,11 @@ import (
 	"net"
 	"os"
 	"time"
-
+	
+	"net/http"
+	"net/url"
+	"strings"
+	
 	"cloud.google.com/go/profiler"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -83,6 +87,9 @@ type checkoutService struct {
 
 	paymentSvcAddr string
 	paymentSvcConn *grpc.ClientConn
+
+	inventorySvcURL string
+	inventoryClient *http.Client
 }
 
 func main() {
@@ -114,6 +121,13 @@ func main() {
 	mustMapEnv(&svc.currencySvcAddr, "CURRENCY_SERVICE_ADDR")
 	mustMapEnv(&svc.emailSvcAddr, "EMAIL_SERVICE_ADDR")
 	mustMapEnv(&svc.paymentSvcAddr, "PAYMENT_SERVICE_ADDR")
+
+	mustMapEnv(&svc.inventorySvcURL, "INVENTORY_SERVICE_URL")
+
+	svc.inventoryClient = &http.Client{
+		Timeout: 3 * time.Second,
+	}
+
 
 	mustConnGRPC(ctx, &svc.shippingSvcConn, svc.shippingSvcAddr)
 	mustConnGRPC(ctx, &svc.productCatalogSvcConn, svc.productCatalogSvcAddr)
@@ -240,6 +254,22 @@ func (cs *checkoutService) PlaceOrder(ctx context.Context, req *pb.PlaceOrderReq
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
 
+	if len(prep.cartItems) != 1 {
+		return nil, status.Error(
+			codes.InvalidArgument,
+			"only one product per order is supported",
+		)
+	}
+
+	item := prep.cartItems[0]
+
+	if item.GetQuantity() != 1 {
+		return nil, status.Error(
+			codes.InvalidArgument,
+			"only quantity 1 is supported",
+		)
+	}
+
 	total := pb.Money{CurrencyCode: req.UserCurrency,
 		Units: 0,
 		Nanos: 0}
@@ -247,6 +277,10 @@ func (cs *checkoutService) PlaceOrder(ctx context.Context, req *pb.PlaceOrderReq
 	for _, it := range prep.orderItems {
 		multPrice := money.MultiplySlow(*it.Cost, uint32(it.GetItem().GetQuantity()))
 		total = money.Must(money.Sum(total, multPrice))
+	}
+
+	if err := cs.decreaseStock(ctx, item.GetProductId()); err != nil {
+		return nil, err
 	}
 
 	txID, err := cs.chargeCard(ctx, &total, req.CreditCard)
@@ -391,4 +425,67 @@ func (cs *checkoutService) shipOrder(ctx context.Context, address *pb.Address, i
 		return "", fmt.Errorf("shipment failed: %+v", err)
 	}
 	return resp.GetTrackingId(), nil
+}
+
+
+// Request Inventory Service to decrease inventory by 1
+func (cs *checkoutService) decreaseStock(
+	ctx context.Context,
+	productID string,
+) error {
+	endpoint := strings.TrimRight(cs.inventorySvcURL, "/") +
+		"/stock/" + url.PathEscape(productID) + "/decrease"
+
+	request, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		endpoint,
+		nil,
+	)
+	if err != nil {
+		return status.Error(
+			codes.Internal,
+			"failed to create inventory request",
+		)
+	}
+
+	response, err := cs.inventoryClient.Do(request)
+	if err != nil {
+	
+		log.Warnf("inventory request failed: %v", err)
+
+		return status.Error(
+			codes.Unknown,
+			"inventory result is unknown",
+		)
+	}
+	defer response.Body.Close()
+
+	switch response.StatusCode {
+	case http.StatusOK:
+		return nil
+
+	case http.StatusConflict:
+		return status.Error(
+			codes.FailedPrecondition,
+			"product is out of stock",
+		)
+
+	case http.StatusNotFound:
+		return status.Error(
+			codes.NotFound,
+			"product stock is not registered",
+		)
+
+	default:
+		log.Warnf(
+			"inventory service returned HTTP %d",
+			response.StatusCode,
+		)
+
+		return status.Error(
+			codes.Internal,
+			"inventory service failed",
+		)
+	}
 }

@@ -66,6 +66,8 @@ spec:
             value: "currencyservice:7000"
           - name: CART_SERVICE_ADDR
             value: "cartservice:7070"
+          - name: INVENTORY_SERVICE_URL
+            value: "http://inventoryservice:8080"
           resources:
             requests:
               cpu: 100m

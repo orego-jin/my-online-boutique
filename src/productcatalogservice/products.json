@@ -16,7 +16,7 @@
             "id": "red",
             "name": "Raspberry Donut",
             "description": "Rich & Smooth",
-            "picture": "/static/img/red.png",
+            "picture": "/static/img/products/red.png",
             "priceUsd": {
                 "currencyCode": "USD",
                 "units": 3,

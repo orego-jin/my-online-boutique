@@ -1,4 +1,5 @@
 # Online Donut Store: Inventory Microservice Extension
+![image](docs/img/0.main-page0.png)
 
 Extended [Google’s Online Boutique](https://github.com/GoogleCloudPlatform/microservices-demo) with a Java/Spring Boot inventory service integrated into the existing Go checkout service.
 

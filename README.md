@@ -100,7 +100,7 @@ skaffold run --module app --build-concurrency=1
 ```
 ## Demo
 
-#### Set up
+### Set up
 Build and deploy the application in Google Cloud Shell.
 ![image](docs/img/0.status-console.png)
 
@@ -110,7 +110,7 @@ Initialize and verify stock in Redis.
 Open the front page.
 ![image](docs/img/0.main-page.png)
 
-#### Successful Order
+### Successful Order
 
 Add one Blue Donut to the cart and proceed to checkout.
 ![image](docs/img/1.add-blue.png)
@@ -123,9 +123,9 @@ Submit the order and confirm that checkout succeeds.
 Verify that stock decreased by one in Redis.
 ![image](docs/img/1.inventory-check-after-blue-checkout.png)
 
-#### Failed Orders
+### Failed Orders
 
-##### Unregistered Stock 
+#### Unregistered Stock 
 Attempt to order a product whose stock has not been initialized in Redis. (white)
 
 ![image](docs/img/2.no-item-in-db.png)
@@ -133,7 +133,7 @@ Checkout stops before payment and returns an error.
 
 ![image](docs/img/2.no-item-in-db-error.png)
 
-##### Out of Stock 
+#### Out of Stock 
 Purchase the last available Red Donut.
 ![image](docs/img/2.red-last-one-checkout.png)
 
@@ -143,7 +143,7 @@ Verify that its stock is now zero.
 Attempt another purchase of the same product. Checkout is rejected because no stock remains.
 ![image](docs/img/2.out-of-stock-page.png)
 
-##### Unsupported Quantity
+#### Unsupported Quantity
 
 The current checkout implementation accepts only one product with a quantity of one.
 

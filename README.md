@@ -1,169 +1,171 @@
-<!-- <p align="center">
-<img src="/src/frontend/static/icons/Hipster_HeroLogoMaroon.svg" width="300" alt="Online Boutique" />
-</p> -->
-![Continuous Integration](https://github.com/GoogleCloudPlatform/microservices-demo/workflows/Continuous%20Integration%20-%20Main/Release/badge.svg)
+# Online Donut Store: Inventory Microservice Extension
 
-**Online Boutique** is a cloud-first microservices demo application.  The application is a
-web-based e-commerce app where users can browse items, add them to the cart, and purchase them.
+Extended [Google’s Online Boutique](https://github.com/GoogleCloudPlatform/microservices-demo) with a Java/Spring Boot inventory service integrated into the existing Go checkout service.
 
-Google uses this application to demonstrate how developers can modernize enterprise applications using Google Cloud products, including: [Google Kubernetes Engine (GKE)](https://cloud.google.com/kubernetes-engine), [Cloud Service Mesh (CSM)](https://cloud.google.com/service-mesh), [gRPC](https://grpc.io/), [Cloud Operations](https://cloud.google.com/products/operations), [Spanner](https://cloud.google.com/spanner), [Memorystore](https://cloud.google.com/memorystore), [AlloyDB](https://cloud.google.com/alloydb), and [Gemini](https://ai.google.dev/). This application works on any Kubernetes cluster.
+The extension uses Redis Lua scripting to check and deduct stock atomically, preventing concurrent requests from reducing stock below zero.
 
-If you’re using this demo, please **★Star** this repository to show your interest!
+## Objectives
 
-**Note to Googlers:** Please fill out the form at [go/microservices-demo](http://go/microservices-demo).
+- Understand service boundaries and communication in an existing microservices application
+- Implement an independent backend service and integrate it into the checkout flow
+- Address race conditions in inventory updates
+- Build and deploy the service using Docker, Kubernetes, and Skaffold
 
-## Architecture
+## My Contributions
 
-**Online Boutique** is composed of 11 microservices written in different
-languages that talk to each other over gRPC.
+| Component | Changes |
+| --- | --- |
+| Inventory service | Built REST endpoints for stock lookup and single-unit deduction using Java 21 and Spring Boot |
+| Concurrency control | Implemented a Redis Lua script for atomic stock validation and deduction |
+| Checkout integration | Added HTTP calls, timeouts, and inventory error handling to the Go checkout service |
+| Containerization | Added a multi-stage Dockerfile for the inventory service |
+| Deployment | Added Kubernetes Deployment and Service resources and registered the service in Skaffold and Kustomize |
 
-[![Architecture of
-microservices](/docs/img/architecture-diagram.png)](/docs/img/architecture-diagram.png)
+The frontend, catalog, cart, payment, shipping, and other existing services come from the original application.
 
-Find **Protocol Buffers Descriptions** at the [`./protos` directory](/protos).
+## Architecture & Checkout Flow
 
-| Service                                              | Language      | Description                                                                                                                       |
-| ---------------------------------------------------- | ------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| [frontend](/src/frontend)                           | Go            | Exposes an HTTP server to serve the website. Does not require signup/login and generates session IDs for all users automatically. |
-| [cartservice](/src/cartservice)                     | C#            | Stores the items in the user's shopping cart in Redis and retrieves it.                                                           |
-| [productcatalogservice](/src/productcatalogservice) | Go            | Provides the list of products from a JSON file and ability to search products and get individual products.                        |
-| [currencyservice](/src/currencyservice)             | Node.js       | Converts one money amount to another currency. Uses real values fetched from European Central Bank. It's the highest QPS service. |
-| [paymentservice](/src/paymentservice)               | Node.js       | Charges the given credit card info (mock) with the given amount and returns a transaction ID.                                     |
-| [shippingservice](/src/shippingservice)             | Go            | Gives shipping cost estimates based on the shopping cart. Ships items to the given address (mock)                                 |
-| [emailservice](/src/emailservice)                   | Python        | Sends users an order confirmation email (mock).                                                                                   |
-| [checkoutservice](/src/checkoutservice)             | Go            | Retrieves user cart, prepares order and orchestrates the payment, shipping and the email notification.                            |
-| [recommendationservice](/src/recommendationservice) | Python        | Recommends other products based on what's given in the cart.                                                                      |
-| [adservice](/src/adservice)                         | Java          | Provides text ads based on given context words.                                                                                   |
-| [loadgenerator](/src/loadgenerator)                 | Python/Locust | Continuously sends requests imitating realistic user shopping flows to the frontend.                                              |
+![image](docs/img/flow.png)
 
-## Screenshots
 
-| Home Page                                                                                                         | Checkout Screen                                                                                                    |
-| ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| [![Screenshot of store homepage](/docs/img/online-boutique-frontend-1.png)](/docs/img/online-boutique-frontend-1.png) | [![Screenshot of checkout screen](/docs/img/online-boutique-frontend-2.png)](/docs/img/online-boutique-frontend-2.png) |
+1. The frontend sends an order request to Checkout over gRPC.
+2. Checkout reads the cart, validates that it contains one product with a quantity of one, and calculates the total.
+3. Checkout requests stock deduction from Inventory Service over HTTP.
+4. Inventory Service executes a Lua script in Redis to check and deduct one unit.
+5. If deduction succeeds, Checkout proceeds with payment and shipping through the existing gRPC calls.
+6. If the inventory request fails, Checkout returns an error without proceeding to payment.
 
-## Quickstart (GKE)
+* Inventory Service connects to the existing `redis-cart` instance and stores stock under `stock:{productId}` keys. 
+* Checkout accesses the service at `http://inventoryservice:8080`.
 
-1. Ensure you have the following requirements:
-   - [Google Cloud project](https://cloud.google.com/resource-manager/docs/creating-managing-projects#creating_a_project).
-   - Shell environment with `gcloud`, `git`, and `kubectl`.
 
-2. Clone the latest major version.
+## Inventory API
 
-   ```sh
-   git clone --depth 1 --branch v0 https://github.com/GoogleCloudPlatform/microservices-demo.git
-   cd microservices-demo/
-   ```
+| Method | Endpoint | Success response |
+| --- | --- | --- |
+| GET | `/stock/{productId}` | HTTP 200 with the available stock |
+| POST | `/stock/{productId}/decrease` | HTTP 200 with the remaining stock after deducting one unit |
 
-   The `--depth 1` argument skips downloading git history.
+* Both endpoints return **HTTP 404** if stock has not been registered. 
+* The deduction endpoint returns **HTTP 409** if the product is out of stock.
 
-3. Set the Google Cloud project and region and ensure the Google Kubernetes Engine API is enabled.
+* Stock is initialized directly in Redis:
 
-   ```sh
-   export PROJECT_ID=<PROJECT_ID>
-   export REGION=us-central1
-   gcloud services enable container.googleapis.com \
-     --project=${PROJECT_ID}
-   ```
+```bash
+# Initialize stock to 10 only if the key does not already exist
+kubectl exec deployment/redis-cart -- redis-cli SET stock:red 10 NX
 
-   Substitute `<PROJECT_ID>` with the ID of your Google Cloud project.
+# Check the current stock
+kubectl exec deployment/redis-cart -- redis-cli GET stock:red
+```
 
-4. Create a GKE cluster and get the credentials for it.
+## Preventing Race Conditions
 
-   ```sh
-   gcloud container clusters create-auto online-boutique \
-     --project=${PROJECT_ID} --region=${REGION}
-   ```
+With separate read and update operations, two concurrent requests could both see the last available unit and attempt to deduct it.
 
-   Creating the cluster may take a few minutes.
+The `decrease-stock.lua` script executes the following steps atomically in Redis:
 
-5. Deploy Online Boutique to the cluster.
+1. Verify that the stock key exists.
+2. Check that stock is available.
+3. Deduct one unit.
+4. Return the remaining quantity.
 
-   ```sh
-   kubectl apply -f ./release/kubernetes-manifests.yaml
-   ```
+Because other Redis operations cannot interleave with these steps, concurrent deduction requests cannot consume the same unit.
 
-6. Wait for the pods to be ready.
+This protects the stock update itself; it does not make inventory deduction, payment, and shipping a single atomic transaction.
 
-   ```sh
-   kubectl get pods
-   ```
+## Key Files
 
-   After a few minutes, you should see the Pods in a `Running` state:
+| File | Purpose |
+| --- | --- |
+| `src/inventoryservice/` | Spring Boot application, REST endpoints, Redis configuration, and Dockerfile |
+| `src/inventoryservice/src/main/resources/lua/decrease-stock.lua` | Atomic stock validation and deduction |
+| `src/checkoutservice/main.go` | Inventory HTTP client and checkout integration |
+| `kubernetes-manifests/checkoutservice.yaml` | Inventory service URL configuration for Checkout |
+| `kubernetes-manifests/inventoryservice.yaml` | Inventory Deployment, Service, and Redis connection settings |
+| `kubernetes-manifests/kustomization.yaml` | Registration of the inventory manifest |
+| `skaffold.yaml` | Inventory image build configuration |
 
-   ```
-   NAME                                     READY   STATUS    RESTARTS   AGE
-   adservice-76bdd69666-ckc5j               1/1     Running   0          2m58s
-   cartservice-66d497c6b7-dp5jr             1/1     Running   0          2m59s
-   checkoutservice-666c784bd6-4jd22         1/1     Running   0          3m1s
-   currencyservice-5d5d496984-4jmd7         1/1     Running   0          2m59s
-   emailservice-667457d9d6-75jcq            1/1     Running   0          3m2s
-   frontend-6b8d69b9fb-wjqdg                1/1     Running   0          3m1s
-   loadgenerator-665b5cd444-gwqdq           1/1     Running   0          3m
-   paymentservice-68596d6dd6-bf6bv          1/1     Running   0          3m
-   productcatalogservice-557d474574-888kr   1/1     Running   0          3m
-   recommendationservice-69c56b74d4-7z8r5   1/1     Running   0          3m1s
-   redis-cart-5f59546cdd-5jnqf              1/1     Running   0          2m58s
-   shippingservice-6ccc89f8fd-v686r         1/1     Running   0          2m58s
-   ```
+## Development Environment 
 
-7. Access the web frontend in a browser using the frontend's external IP.
+- **Application:** Java 21, Spring Boot, Go, Redis, Lua
+- **Build and deployment:** Docker, Kubernetes, Skaffold, Kustomize
+- **Development platform:** Minikube in Google Cloud Shell
 
-   ```sh
-   kubectl get service frontend-external | awk '{print $4}'
-   ```
+To build and deploy the application without the load generator, with one image build at a time:
 
-   Visit `http://EXTERNAL_IP` in a web browser to access your instance of Online Boutique.
+```bash
+skaffold run --module app --build-concurrency=1
+```
+## Demo
 
-8. Congrats! You've deployed the default Online Boutique. To deploy a different variation of Online Boutique (e.g., with Google Cloud Operations tracing, Istio, etc.), see [Deploy Online Boutique variations with Kustomize](#deploy-online-boutique-variations-with-kustomize).
+#### Set up
+Build and deploy the application in Google Cloud Shell.
+![image](docs/img/0.status-console.png)
 
-9. Once you are done with it, delete the GKE cluster.
+Initialize and verify stock in Redis.
+![image](docs/img/0.check-and-restock-inventory.png)
 
-   ```sh
-   gcloud container clusters delete online-boutique \
-     --project=${PROJECT_ID} --region=${REGION}
-   ```
+Open the front page.
+![image](docs/img/0.main-page.png)
 
-   Deleting the cluster may take a few minutes.
+#### Successful Order
 
-## Additional deployment options
+Add one Blue Donut to the cart and proceed to checkout.
+![image](docs/img/1.add-blue.png)
 
-- **Terraform**: [See these instructions](/terraform) to learn how to deploy Online Boutique using [Terraform](https://www.terraform.io/intro).
-- **Istio / Cloud Service Mesh**: [See these instructions](/kustomize/components/service-mesh-istio/README.md) to deploy Online Boutique alongside an Istio-backed service mesh.
-- **Non-GKE clusters (Minikube, Kind, etc)**: See the [Development guide](/docs/development-guide.md) to learn how you can deploy Online Boutique on non-GKE clusters.
-- **AI assistant using Gemini**: [See these instructions](/kustomize/components/shopping-assistant/README.md) to deploy a Gemini-powered AI assistant that suggests products to purchase based on an image.
-- **And more**: The [`/kustomize` directory](/kustomize) contains instructions for customizing the deployment of Online Boutique with other variations.
+Submit the order and confirm that checkout succeeds.
+![image](docs/img/1.blue-in-cart.png)
 
-## Documentation
+![image](docs/img/1.blue-order-complete.png)
 
-- [Development](/docs/development-guide.md) to learn how to run and develop this app locally.
+Verify that stock decreased by one in Redis.
+![image](docs/img/1.inventory-check-after-blue-checkout.png)
 
-## Demos featuring Online Boutique
+#### Failed Orders
 
-- [Security hardening of the OnlineBoutique sample apps with the Docker Hardened Images (DHI)](https://medium.com/google-cloud/security-hardening-of-the-onlineboutique-sample-apps-with-docker-hardened-images-dhi-ca1fad348343)
-- [alpine, distroless or scratch?](https://medium.com/google-cloud/alpine-distroless-or-scratch-caac35250e0b)
-- [Platform Engineering in action: Deploy the Online Boutique sample apps with Score and Humanitec](https://medium.com/p/d99101001e69)
-- [The new Kubernetes Gateway API with Istio and Anthos Service Mesh (ASM)](https://medium.com/p/9d64c7009cd)
-- [Use Azure Redis Cache with the Online Boutique sample on AKS](https://medium.com/p/981bd98b53f8)
-- [Sail Sharp, 8 tips to optimize and secure your .NET containers for Kubernetes](https://medium.com/p/c68ba253844a)
-- [Deploy multi-region application with Anthos and Google cloud Spanner](https://medium.com/google-cloud/a2ea3493ed0)
-- [Use Google Cloud Memorystore (Redis) with the Online Boutique sample on GKE](https://medium.com/p/82f7879a900d)
-- [Use Helm to simplify the deployment of Online Boutique, with a Service Mesh, GitOps, and more!](https://medium.com/p/246119e46d53)
-- [How to reduce microservices complexity with Apigee and Anthos Service Mesh](https://cloud.google.com/blog/products/application-modernization/api-management-and-service-mesh-go-together)
-- [gRPC health probes with Kubernetes 1.24+](https://medium.com/p/b5bd26253a4c)
-- [Use Google Cloud Spanner with the Online Boutique sample](https://medium.com/p/f7248e077339)
-- [Seamlessly encrypt traffic from any apps in your Mesh to Memorystore (redis)](https://medium.com/google-cloud/64b71969318d)
-- [Strengthen your app's security with Cloud Service Mesh and Anthos Config Management](https://cloud.google.com/service-mesh/docs/strengthen-app-security)
-- [From edge to mesh: Exposing service mesh applications through GKE Ingress](https://cloud.google.com/architecture/exposing-service-mesh-apps-through-gke-ingress)
-- [Take the first step toward SRE with Cloud Operations Sandbox](https://cloud.google.com/blog/products/operations/on-the-road-to-sre-with-cloud-operations-sandbox)
-- [Deploying the Online Boutique sample application on Cloud Service Mesh](https://cloud.google.com/service-mesh/docs/onlineboutique-install-kpt)
-- [Anthos Service Mesh Workshop: Lab Guide](https://codelabs.developers.google.com/codelabs/anthos-service-mesh-workshop)
-- [KubeCon EU 2019 - Reinventing Networking: A Deep Dive into Istio's Multicluster Gateways - Steve Dake, Independent](https://youtu.be/-t2BfT59zJA?t=982)
-- Google Cloud Next'18 SF
-  - [Day 1 Keynote](https://youtu.be/vJ9OaAqfxo4?t=2416) showing GKE On-Prem
-  - [Day 3 Keynote](https://youtu.be/JQPOPV_VH5w?t=815) showing Stackdriver
-    APM (Tracing, Code Search, Profiler, Google Cloud Build)
-  - [Introduction to Service Management with Istio](https://www.youtube.com/watch?v=wCJrdKdD6UM&feature=youtu.be&t=586)
-- [Google Cloud Next'18 London – Keynote](https://youtu.be/nIq2pkNcfEI?t=3071)
-  showing Stackdriver Incident Response Management
-- [Microservices demo showcasing Go Micro](https://github.com/go-micro/demo)
+##### Unregistered Stock 
+Attempt to order a product whose stock has not been initialized in Redis. (white)
+
+![image](docs/img/2.no-item-in-db.png)
+Checkout stops before payment and returns an error.
+
+![image](docs/img/2.no-item-in-db-error.png)
+
+##### Out of Stock 
+Purchase the last available Red Donut.
+![image](docs/img/2.red-last-one-checkout.png)
+
+Verify that its stock is now zero.
+![image](docs/img/2.inventory-check-after-red-checkout.png)
+
+Attempt another purchase of the same product. Checkout is rejected because no stock remains.
+![image](docs/img/2.out-of-stock-page.png)
+
+##### Unsupported Quantity
+
+The current checkout implementation accepts only one product with a quantity of one.
+
+Attempt to check out with a quantity of two.
+![image](docs/img/2.quantity2.png)
+
+Checkout rejects the order before requesting stock deduction.
+![image](docs/img/2.quantity2-error.png)
+
+
+## Troubleshooting Experience
+
+- Corrected the Maven source and resource directory layout to resolve packaging failures.
+- Investigated disk-related Docker build failures and reclaimed unused build cache.
+- Diagnosed Pending Pods by comparing CPU requests with node capacity.
+- Adjusted the development rollout strategy to reduce overlap between old and new Pods.
+
+## Scope and Limitations
+
+- Checkout supports one product with a quantity of one per order.
+- Multi-product atomic deduction is not supported.
+- Requests are not idempotent. Retries may deduct stock more than once.
+- Stock is deducted before payment and is not automatically restored if payment fails.
+- Inventory data may be lost when the Redis Pod is replaced because the current deployment does not use persistent storage.
+
+Potential improvements include request idempotency, stock recovery after failed checkout, and persistent Redis storage.
